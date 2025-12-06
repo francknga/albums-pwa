@@ -1,85 +1,164 @@
-<!-- ========== index.html ========== -->
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PWA Albums - Archive.org Player</title>
-<meta name="description" content="Progressive Web App pour lire vos albums hébergés sur Archive.org" />
-<link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#0f172a" />
-<style>
-/* style minimal, moderne */
-:root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--accent:#7dd3fc}
-*{box-sizing:border-box}
-body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071123 0%, #071426 100%);color:#e6eef6;min-height:100vh;display:flex;flex-direction:column}
-header{display:flex;align-items:center;gap:16px;padding:18px 20px}
-h1{margin:0;font-size:1.1rem}
-.container{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:20px;align-items:start}
-@media(max-width:900px){.container{grid-template-columns:1fr;}
-header{justify-content:center}
-}
-.sidebar{background:rgba(255,255,255,0.03);padding:16px;border-radius:12px}
-.input-group{display:flex;flex-direction:column;gap:8px}
-textarea{width:100%;min-height:120px;padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;font-family:monospace}
-button{background:linear-gradient(90deg,var(--accent),#60a5fa);border:none;padding:10px 12px;border-radius:10px;color:#04233a;font-weight:600;cursor:pointer}
-.albums-list{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto}
-.album{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;cursor:pointer}
-.album:hover{background:rgba(255,255,255,0.02)}
-.cover{width:64px;height:64px;border-radius:6px;background:linear-gradient(180deg,#1f2937,#0b1220);object-fit:cover}
-.meta{display:flex;flex-direction:column}
-.meta .title{font-weight:700}
-.meta .sub{color:var(--muted);font-size:0.9rem}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Collection d'albums de musique Suno AI hébergés sur Archive.org">
+  <meta name="theme-color" content="#9333ea">
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:title" content="Mes Albums - Collection Musicale">
+  <meta property="og:description" content="Collection d'albums de musique Suno AI">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/icon-512.png">
+  
+  <title>🎵 Mes Albums - Collection Musicale</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    /* Animations personnalisées */
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .animate-float {
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    /* Style scrollbar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #1a1a2e;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #9333ea;
+      border-radius: 5px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a855f7;
+    }
 
-
-/* player */
-.player{background:rgba(255,255,255,0.03);padding:18px;border-radius:12px;min-height:320px}
-.player-top{display:flex;gap:16px;align-items:center}
-.player-controls{display:flex;gap:12px;align-items:center;margin-top:12px}
-.play-btn{width:56px;height:56px;border-radius:14px;border:none;font-size:18px;display:grid;place-items:center;background:var(--accent);color:#04233a}
-.progress{width:100%;height:8px;background:rgba(255,255,255,0.05);border-radius:10px;margin-top:12px;position:relative}
-.progress > i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#7dd3fc);border-radius:10px}
-.playlist{margin-top:16px;max-height:38vh;overflow:auto}
-.track{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px}
-.track:hover{background:rgba(255,255,255,0.02)}
-.muted{color:var(--muted)}
-
-
-footer{padding:12px;text-align:center;color:var(--muted);font-size:0.9rem}
-
-
-</style>
+    /* Effet de brillance sur les cartes */
+    .card-shine {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .card-shine::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(
+        45deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+      );
+      transform: rotate(45deg);
+      transition: all 0.5s;
+    }
+    
+    .card-shine:hover::before {
+      left: 100%;
+    }
+  </style>
 </head>
 <body>
-<header>
-<img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><rect rx='10' width='44' height='44' fill='%23071a2b'/><text x='50%' y='55%' font-size='16' text-anchor='middle' fill='%237dd3fc' font-family='Arial'>PWA</text></svg>" alt="logo" style="width:44px;height:44px;border-radius:10px;"/>
-<div>
-<h1>PWA Albums — Archive.org Player</h1>
-<div style="color:var(--muted);font-size:0.95rem">Colle tes URLs (ou JSON) puis clique <strong>Parser et Charger Album</strong>.</div>
-</div>
-</header>
+  <div id="root"></div>
+  
+  <!-- Installation PWA Banner -->
+  <div id="install-banner" style="display: none;" class="fixed bottom-20 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-purple-900 text-white p-4 rounded-lg shadow-2xl z-50 border border-purple-500">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold">📱 Installer l'application</h3>
+      <button id="close-banner" class="text-2xl hover:text-purple-300">&times;</button>
+    </div>
+    <p class="text-sm mb-3">Installez cette PWA pour un accès rapide et une utilisation offline !</p>
+    <div class="flex gap-2">
+      <button id="install-button" class="flex-1 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition">
+        Installer
+      </button>
+      <button id="later-button" class="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition">
+        Plus tard
+      </button>
+    </div>
+  </div>
 
+  <script type="module">
+    // Votre code React sera injecté ici par le build
+  </script>
+  
+  <script>
+    // Enregistrement du Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('Service Worker enregistré:', registration);
+          })
+          .catch(error => {
+            console.log('Erreur Service Worker:', error);
+          });
+      });
+    }
 
-<main class="container">
-<aside class="sidebar">
-<div class="input-group">
-<label class="muted">Coller les URLs (même sans séparateurs) :</label>
-<textarea id="urlsInput" placeholder="Colle ici les URLs, ex : https://archive.org/download/noel-skyline/01-...mp3https://archive.org/download/noel-skyline/02-...mp3"></textarea>
-<div style="display:flex;gap:8px">
-<button id="parseBtn">Parser et Charger Album</button>
-<button id="clearBtn" style="background:transparent;color:var(--accent);border:1px solid rgba(125,211,252,0.25)">Effacer</button>
-</div>
-</div>
+    // Gestion de l'installation PWA
+    let deferredPrompt;
+    const installBanner = document.getElementById('install-banner');
+    const installButton = document.getElementById('install-button');
+    const closeBanner = document.getElementById('close-banner');
+    const laterButton = document.getElementById('later-button');
 
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      
+      // Affiche le banner après 3 secondes
+      setTimeout(() => {
+        installBanner.style.display = 'block';
+      }, 3000);
+    });
 
-<div style="margin-top:12px">
-<label class="muted">Albums détectés :</label>
-<div id="albumsList" class="albums-list"></div>
-</div>
+    installButton.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      
+      console.log(`Installation: ${outcome}`);
+      deferredPrompt = null;
+      installBanner.style.display = 'none';
+    });
 
+    closeBanner.addEventListener('click', () => {
+      installBanner.style.display = 'none';
+    });
 
-<div style="margin-top:16px">
-<label class="muted">Importer JSON :</label>
-<input id="fileInput" type="file" accept="application/json" />
-</div>
-</aside>
+    laterButton.addEventListener('click', () => {
+      installBanner.style.display = 'none';
+    });
+
+    // Notification quand l'app est installée
+    window.addEventListener('appinstalled', () => {
+      console.log('PWA installée avec succès!');
+      installBanner.style.display = 'none';
+    });
+  </script>
+</body>
+</html>
