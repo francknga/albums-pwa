@@ -1,164 +1,398 @@
+<!--
+Fichiers inclus dans ce document :
+1) index.html  (page unique, responsive, UI + parser pour URLs Archive.org)
+2) manifest.json (à copier en fichier séparé : /manifest.json)
+3) service-worker.js (à copier en fichier séparé : /service-worker.js)
+
+MODE D'EMPLOI RAPIDE :
+- Crée un dossier et place `index.html`, `manifest.json`, `service-worker.js` à la racine.
+- Héberge-les sur un domaine HTTPS (GitHub Pages, Netlify, ton propre hébergement). Blogger peut poser des limitations pour le service worker — lire la section "Remarques déploiement" ci-dessous.
+- Ouvre la page et colle ta liste d'URLs (même collées bout à bout comme ton exemple) dans le champ "Coller les URLs" -> clique "Parser et Charger Album".
+- La PWA va regrouper par identifiant Archive.org (ex: `noel-skyline`) et générer une vignette si elle trouve une image jpg/png dans le même dossier (ou tu peux uploader un cover manuellement).
+-->
+
+<!-- ========== index.html ========== -->
 <!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PWA Albums — Archive.org Player</title>
-  <meta name="description" content="PWA pour lire albums hébergés sur Archive.org — tape l'identifiant, charge & joue." />
+  <title>PWA Albums - Archive.org Player</title>
+  <meta name="description" content="Progressive Web App pour lire vos albums hébergés sur Archive.org" />
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#0f172a" />
   <style>
-    /* Apple Music-like light theme */
-    :root{
-      --bg:#ffffff; --panel:#f6f7fb; --muted:#65707a; --accent:#0070f3;
-      --card-shadow: 0 6px 24px rgba(20,30,40,0.06);
-    }
+    /* style minimal, moderne */
+    :root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--accent:#7dd3fc}
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Roboto,Helvetica,Arial;color:#0b1220;background:linear-gradient(180deg,#ffffff,#f7f9fc);min-height:100vh}
-    header{display:flex;align-items:center;gap:14px;padding:18px 22px}
-    h1{margin:0;font-size:1.05rem}
-    .wrap{max-width:1100px;margin:18px auto;padding:0 16px}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071123 0%, #071426 100%);color:#e6eef6;min-height:100vh;display:flex;flex-direction:column}
+    header{display:flex;align-items:center;gap:16px;padding:18px 20px}
+    h1{margin:0;font-size:1.1rem}
+    .container{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:20px;align-items:start}
+    @media(max-width:900px){.container{grid-template-columns:1fr;}
+      header{justify-content:center}
+    }
+    .sidebar{background:rgba(255,255,255,0.03);padding:16px;border-radius:12px}
+    .input-group{display:flex;flex-direction:column;gap:8px}
+    textarea{width:100%;min-height:120px;padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;font-family:monospace}
+    button{background:linear-gradient(90deg,var(--accent),#60a5fa);border:none;padding:10px 12px;border-radius:10px;color:#04233a;font-weight:600;cursor:pointer}
+    .albums-list{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto}
+    .album{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;cursor:pointer}
+    .album:hover{background:rgba(255,255,255,0.02)}
+    .cover{width:64px;height:64px;border-radius:6px;background:linear-gradient(180deg,#1f2937,#0b1220);object-fit:cover}
+    .meta{display:flex;flex-direction:column}
+    .meta .title{font-weight:700}
+    .meta .sub{color:var(--muted);font-size:0.9rem}
 
-    .grid{display:grid;grid-template-columns:360px 1fr;gap:22px}
-    @media(max-width:920px){.grid{grid-template-columns:1fr}}
-
-    .panel{background:var(--panel);border-radius:14px;padding:16px;box-shadow:var(--card-shadow)}
-    .input-row{display:flex;gap:10px;align-items:center}
-    input[type=text]{flex:1;padding:10px 12px;border-radius:10px;border:1px solid #e6e9ef;background:white}
-    button{background:var(--accent);color:white;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    /* player */
+    .player{background:rgba(255,255,255,0.03);padding:18px;border-radius:12px;min-height:320px}
+    .player-top{display:flex;gap:16px;align-items:center}
+    .player-controls{display:flex;gap:12px;align-items:center;margin-top:12px}
+    .play-btn{width:56px;height:56px;border-radius:14px;border:none;font-size:18px;display:grid;place-items:center;background:var(--accent);color:#04233a}
+    .progress{width:100%;height:8px;background:rgba(255,255,255,0.05);border-radius:10px;margin-top:12px;position:relative}
+    .progress > i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#7dd3fc);border-radius:10px}
+    .playlist{margin-top:16px;max-height:38vh;overflow:auto}
+    .track{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px}
+    .track:hover{background:rgba(255,255,255,0.02)}
     .muted{color:var(--muted)}
 
-    .albums-list{margin-top:12px;display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto}
-    .album{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;cursor:pointer}
-    .album:hover{background:rgba(0,112,243,0.04)}
-    .cover{width:72px;height:72px;border-radius:10px;object-fit:cover;background:#f0f3f6}
+    footer{padding:12px;text-align:center;color:var(--muted);font-size:0.9rem}
 
-    /* Player */
-    .player{display:flex;flex-direction:column;gap:14px}
-    .player-top{display:flex;gap:18px;align-items:center}
-    .player-cover{width:160px;height:160px;border-radius:12px;object-fit:cover;background:#fff;border:1px solid #eef2f6}
-    .player-meta{display:flex;flex-direction:column;gap:6px}
-    .player-title{font-size:1.2rem;font-weight:700}
-    .player-sub{color:var(--muted)}
-
-    .controls{display:flex;align-items:center;gap:12px}
-    .big-play{width:64px;height:64px;border-radius:14px;border:none;background:var(--accent);color:white;font-size:18px;display:grid;place-items:center}
-
-    .progress{height:8px;background:#e6ecf8;border-radius:999px;position:relative;overflow:hidden}
-    .progress > i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#66a6ff,#0070f3)}
-
-    .playlist{margin-top:8px;max-height:48vh;overflow:auto}
-    .track{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px}
-    .track:hover{background:rgba(15,23,42,0.02)}
-
-    footer{text-align:center;color:var(--muted);padding:18px;font-size:0.95rem}
   </style>
 </head>
 <body>
-  <header class="wrap">
-    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><rect rx='8' width='44' height='44' fill='%23ffffff' stroke='%230070f3' stroke-width='2'/><text x='50%' y='58%' font-size='15' text-anchor='middle' fill='%230070f3' font-family='Arial'>A</text></svg>" alt="logo" style="width:44px;height:44px;border-radius:8px;"/>
+  <header>
+    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><rect rx='10' width='44' height='44' fill='%23071a2b'/><text x='50%' y='55%' font-size='16' text-anchor='middle' fill='%237dd3fc' font-family='Arial'>PWA</text></svg>" alt="logo" style="width:44px;height:44px;border-radius:10px;"/>
     <div>
       <h1>PWA Albums — Archive.org Player</h1>
-      <div class="muted">Saisis un identifiant Archive.org (ex: <code>noel-skyline</code>) puis clique « Charger l'album »</div>
+      <div style="color:var(--muted);font-size:0.95rem">Colle tes URLs (ou JSON) puis clique <strong>Parser et Charger Album</strong>.</div>
     </div>
   </header>
 
-  <main class="wrap grid">
-    <aside class="panel">
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div class="input-row">
-          <input id="identifier" type="text" placeholder="Entrez l'identifiant Archive.org (ex: noel-skyline)" />
-          <button id="loadBtn">Charger l'album</button>
+  <main class="container">
+    <aside class="sidebar">
+      <div class="input-group">
+        <label class="muted">Coller les URLs (même sans séparateurs) :</label>
+        <textarea id="urlsInput" placeholder="Colle ici les URLs, ex : https://archive.org/download/noel-skyline/01-...mp3https://archive.org/download/noel-skyline/02-...mp3"></textarea>
+        <div style="display:flex;gap:8px">
+          <button id="parseBtn">Parser et Charger Album</button>
+          <button id="clearBtn" style="background:transparent;color:var(--accent);border:1px solid rgba(125,211,252,0.25)">Effacer</button>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <label class="muted">Ou colle des URLs brutes :</label>
-        </div>
-        <textarea id="rawUrls" placeholder="(optionnel) coller des URLs directes si tu préfères" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid #eef2f6;background:white;font-family:monospace"></textarea>
+      </div>
 
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="parseUrlsBtn" style="background:#222;color:white">Parser URLs</button>
-          <button id="clearBtn" style="background:transparent;border:1px solid #e6eefc;color:var(--muted)">Effacer</button>
-        </div>
+      <div style="margin-top:12px">
+        <label class="muted">Albums détectés :</label>
+        <div id="albumsList" class="albums-list"></div>
+      </div>
 
-        <div style="margin-top:12px">
-          <div class="muted">Albums chargés :</div>
-          <div id="albumsList" class="albums-list"></div>
-        </div>
+      <div style="margin-top:16px">
+        <label class="muted">Importer JSON :</label>
+        <input id="fileInput" type="file" accept="application/json" />
       </div>
     </aside>
 
-    <section class="panel player">
+    <section class="player">
       <div class="player-top">
-        <img id="playerCover" class="player-cover" src="" alt="cover" />
+        <img id="playerCover" class="cover" src="" alt="cover" />
         <div style="flex:1">
-          <div class="player-meta">
-            <div id="playerTitle" class="player-title">Aucun album</div>
-            <div id="playerSub" class="player-sub">—</div>
-          </div>
-
-          <div style="margin-top:12px">
-            <div class="controls">
-              <button id="prevBtn">⏮</button>
-              <button id="playBtn" class="big-play">▶</button>
-              <button id="nextBtn">⏭</button>
-
-              <div style="margin-left:20px;color:var(--muted)"><span id="currentTime">0:00</span> / <span id="duration">0:00</span></div>
-
-              <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-                <label class="muted">Volume</label>
-                <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" />
-              </div>
+          <div style="display:flex;justify-content:space-between;align-items:start">
+            <div>
+              <div id="playerTitle" style="font-size:1.1rem;font-weight:800">Aucun album sélectionné</div>
+              <div id="playerArtist" class="muted">—</div>
             </div>
-
-            <div class="progress" id="progressBar"><i></i></div>
+            <div style="text-align:right">
+              <div class="muted">Format : Archive.org</div>
+              <div id="trackCount" class="muted"></div>
+            </div>
           </div>
+
+          <div class="player-controls">
+            <button id="prevBtn" title="Précédent">⏮</button>
+            <button id="playBtn" class="play-btn" title="Lecture">▶</button>
+            <button id="nextBtn" title="Suivant">⏭</button>
+            <div style="margin-left:8px;color:var(--muted)"><span id="currentTime">0:00</span> / <span id="duration">0:00</span></div>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+              <label class="muted">Volume</label>
+              <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" />
+            </div>
+          </div>
+
+          <div class="progress" id="progressBar"><i></i></div>
         </div>
       </div>
 
-      <div style="margin-top:6px" class="muted">Pistes :</div>
-      <div id="playlist" class="playlist"></div>
+      <div class="playlist" id="playlist"></div>
     </section>
   </main>
 
-  <footer class="wrap">PWA Albums — Lecteur Archive.org • Développé pour toi</footer>
+  <footer>App PWA — lecteur pour albums Archive.org • Testé avec listes collées comme ton exemple.</footer>
 
   <script>
-    // ----------------- Helpers -----------------
-    function fmtTime(s){ if(!s || isNaN(s)) return '0:00'; const m=Math.floor(s/60); const sec=Math.floor(s%60).toString().padStart(2,'0'); return m+':'+sec }
-
-    // extract URLs if user pasted raw list
+    // ----- Utilitaires de parsing -----
     function extractUrls(text){
+      // Récupère toutes les occurrences de https://archive.org/download/... jusqu'à (mp3|flac|ogg|jpg|png)
       const re = /https:\/\/archive\.org\/download\/[\w%\-\.]+\/(?:[^\s"'<>]+?\.(?:mp3|flac|ogg|m4a|jpg|jpeg|png))/ig;
       let m, arr=[];
       while((m=re.exec(text))!==null){ arr.push(decodeURIComponent(m[0])); }
+      // Si rien trouvé, essaye méthode de séparation par 'https://' pour coller les morceaux
       if(arr.length===0){
         const parts = text.split(/https:\/\//).map(s=>s.trim()).filter(Boolean);
-        for(const p of parts){ if(p.startsWith('archive.org/download/')){ const match = p.match(/archive\.org\/download\/[\w%\-\.]+\/[\s\S]*?\.(mp3|flac|ogg|m4a|jpg|jpeg|png)/i); if(match) arr.push('https://' + match[0]); }}
+        for(const p of parts){
+          if(p.startsWith('archive.org/download/')){
+            // tente d'extraire jusqu'à l'extension
+            const match = p.match(/archive\.org\/download\/[\w%\-\.]+\/[\s\S]*?\.(mp3|flac|ogg|m4a|jpg|jpeg|png)/i);
+            if(match) arr.push('https://' + match[0]);
+          }
+        }
       }
       return Array.from(new Set(arr));
     }
 
-    // ----------------- Archive.org metadata fetch -----------------
-    async function fetchArchiveMetadata(identifier){
-      const url = `https://archive.org/metadata/${encodeURIComponent(identifier)}`;
-      const res = await fetch(url);
-      if(!res.ok) throw new Error('Impossible de récupérer metadata: '+res.status);
-      return res.json();
+    function groupByAlbum(urls){
+      // albumKey = path after download until next slash (ex: noel-skyline)
+      const albums = {};
+      for(const u of urls){
+        try{
+          const url = new URL(u);
+          const parts = url.pathname.split('/').filter(Boolean); // ['', 'download', 'noel-skyline', '01-..mp3']
+          const idx = parts.indexOf('download');
+          const albumKey = parts[idx+1] || 'root';
+          if(!albums[albumKey]) albums[albumKey] = {id: albumKey, cover:null, tracks:[]};
+          const filename = parts.slice(idx+2).join('/');
+          const ext = filename.split('.').pop().toLowerCase();
+          if(['jpg','jpeg','png'].includes(ext)){
+            // prefer cover.jpg naming
+            if(!albums[albumKey].cover) albums[albumKey].cover = u;
+            else if(filename.toLowerCase().includes('cover') || filename.toLowerCase().includes('art')) albums[albumKey].cover = u;
+          } else {
+            albums[albumKey].tracks.push({title:decodeURIComponent(filename.replace(/^\d+[-_ ]*/,'').replace(/\.[^.]+$/,'')), url:u});
+          }
+        } catch(e){ console.warn('url skip',u,e) }
+      }
+      // sort tracks by file name (tries to preserve the numeric prefix)
+      for(const k of Object.keys(albums)){
+        albums[k].tracks.sort((a,b)=>{
+          const fa = a.url.split('/').pop(), fb = b.url.split('/').pop();
+          return fa.localeCompare(fb, undefined, {numeric:true, sensitivity:'base'});
+        })
+      }
+      return Object.values(albums);
     }
 
-    // ----------------- App state -----------------
-    const albums = []; // {id, title, cover, tracks: [{title,url}]}
-    let currentAlbum = null; let currentIndex=0;
-    const audio = new Audio(); audio.crossOrigin='anonymous';
-
-    // DOM
-    const identifierEl = document.getElementById('identifier');
-    const loadBtn = document.getElementById('loadBtn');
-    const rawUrls = document.getElementById('rawUrls');
-    const parseUrlsBtn = document.getElementById('parseUrlsBtn');
-    const albumsListEl = document.getElementById('albumsList');
+    // ----- DOM + Player -----
+    const parseBtn = document.getElementById('parseBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const urlsInput = document.getElementById('urlsInput');
+    const albumsList = document.getElementById('albumsList');
+    const playlistEl = document.getElementById('playlist');
     const playerCover = document.getElementById('playerCover');
     const playerTitle = document.getElementById('playerTitle');
-    const playerSub = document.getElementById('playerSub');
-    const playlistEl = document.getElementById('playlist');
-    const playBtn = do
+    const playerArtist = document.getElementById('playerArtist');
+    const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const currentTimeEl = document.getElementById('currentTime');
+    const durationEl = document.getElementById('duration');
+    const progressBar = document.getElementById('progressBar');
+    const volumeEl = document.getElementById('volume');
+    const trackCountEl = document.getElementById('trackCount');
+
+    let albums = []; let currentAlbum = null; let currentIndex = 0; let isPlaying=false;
+    const audio = new Audio(); audio.crossOrigin = "anonymous";
+
+    function renderAlbums(){
+      albumsList.innerHTML='';
+      for(const a of albums){
+        const div = document.createElement('div'); div.className='album';
+        const img = document.createElement('img'); img.className='cover'; img.src = a.cover || ('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect rx="8" width="64" height="64" fill="%230b1220"/></svg>');
+        const meta = document.createElement('div'); meta.className='meta';
+        const t = document.createElement('div'); t.className='title'; t.textContent = a.id;
+        const s = document.createElement('div'); s.className='sub'; s.textContent = (a.tracks.length||0) + ' pistes';
+        meta.appendChild(t); meta.appendChild(s);
+        div.appendChild(img); div.appendChild(meta);
+        div.addEventListener('click',()=>loadAlbum(a));
+        albumsList.appendChild(div);
+      }
+    }
+
+    function loadAlbum(a){
+      currentAlbum = a; currentIndex = 0;
+      playerCover.src = a.cover || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect rx="12" width="160" height="160" fill="%23071a2b"/></svg>';
+      playerTitle.textContent = a.id;
+      playerArtist.textContent = 'Archive.org';
+      trackCountEl.textContent = a.tracks.length + ' pistes';
+      renderPlaylist();
+      loadTrack(0);
+    }
+
+    function renderPlaylist(){
+      playlistEl.innerHTML='';
+      currentAlbum.tracks.forEach((t,i)=>{
+        const tr = document.createElement('div'); tr.className='track';
+        const left = document.createElement('div'); left.innerHTML = `<div style=\"font-weight:700\">${t.title}</div><div class=\"muted\">${t.url.split('/').pop()}</div>`;
+        const right = document.createElement('div');
+        const btn = document.createElement('button'); btn.textContent = '▶'; btn.addEventListener('click',()=>playIndex(i));
+        right.appendChild(btn);
+        tr.appendChild(left); tr.appendChild(right);
+        playlistEl.appendChild(tr);
+      })
+    }
+
+    function loadTrack(i){
+      if(!currentAlbum) return;
+      const t = currentAlbum.tracks[i];
+      audio.src = t.url;
+      audio.load();
+      highlightPlaying(i);
+      updateTimesOnLoad();
+    }
+
+    function playIndex(i){ currentIndex = i; loadTrack(i); audio.play(); isPlaying=true; updatePlayButton(); }
+    function highlightPlaying(i){ Array.from(playlistEl.children).forEach((el,idx)=> el.style.opacity = idx===i?1:0.7); }
+
+    function updatePlayButton(){ playBtn.textContent = isPlaying ? '⏸' : '▶'; }
+
+    playBtn.addEventListener('click',()=>{
+      if(!currentAlbum) return;
+      if(audio.src===''){ loadTrack(currentIndex); }
+      if(audio.paused){ audio.play(); isPlaying=true;} else { audio.pause(); isPlaying=false; }
+      updatePlayButton();
+    })
+    prevBtn.addEventListener('click',()=>{ if(currentIndex>0) playIndex(currentIndex-1); })
+    nextBtn.addEventListener('click',()=>{ if(currentAlbum && currentIndex < currentAlbum.tracks.length-1) playIndex(currentIndex+1); })
+
+    audio.addEventListener('play',()=>{ isPlaying=true; updatePlayButton(); })
+    audio.addEventListener('pause',()=>{ isPlaying=false; updatePlayButton(); })
+    audio.addEventListener('timeupdate',()=>{
+      const pct = (audio.currentTime/audio.duration||0)*100;
+      progressBar.querySelector('i').style.width = pct + '%';
+      currentTimeEl.textContent = formatTime(audio.currentTime);
+    })
+    audio.addEventListener('loadedmetadata',()=>{ durationEl.textContent = formatTime(audio.duration); updateTimesOnLoad(); })
+    audio.addEventListener('ended',()=>{ if(currentIndex < currentAlbum.tracks.length-1) playIndex(currentIndex+1); else { isPlaying=false; updatePlayButton(); } })
+
+    function formatTime(s){ if(!s || isNaN(s)) return '0:00'; const m=Math.floor(s/60); const sec=Math.floor(s%60).toString().padStart(2,'0'); return m+':'+sec }
+
+    function updateTimesOnLoad(){ currentTimeEl.textContent = formatTime(audio.currentTime); durationEl.textContent = formatTime(audio.duration); }
+
+    volumeEl.addEventListener('input',()=> audio.volume = parseFloat(volumeEl.value));
+
+    progressBar.addEventListener('click',(e)=>{
+      if(!audio.duration) return;
+      const rect = progressBar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left)/rect.width; audio.currentTime = pct * audio.duration;
+    })
+
+    // parsing + events
+    parseBtn.addEventListener('click',()=>{
+      const raw = urlsInput.value.trim(); if(!raw) { alert('Colle tes URLs ou JSON.'); return; }
+      const urls = extractUrls(raw);
+      if(urls.length===0){ alert('Aucune URL détectée. Assure-toi d'avoir des liens archive.org/download/...'); return; }
+      const grouped = groupByAlbum(urls);
+      // merge with existing albums
+      albums = albums.concat(grouped);
+      // remove duplicates by id
+      const map = {};
+      albums.forEach(a=>map[a.id]=a);
+      albums = Object.values(map);
+      renderAlbums();
+      // auto-open le premier nouvel album
+      if(albums.length) loadAlbum(albums[0]);
+    })
+
+    clearBtn.addEventListener('click',()=>{ urlsInput.value=''; })
+
+    // file import json
+    document.getElementById('fileInput').addEventListener('change',(e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try{
+          const data = JSON.parse(reader.result);
+          if(data.albums){ albums = albums.concat(data.albums); renderAlbums(); if(albums[0]) loadAlbum(albums[0]); }
+          else alert('JSON invalide : attendez la clef "albums"');
+        }catch(err){ alert('Erreur JSON : '+err.message) }
+      }
+      reader.readAsText(f);
+    })
+
+    // initial demo avec ton exemple collé (détecte automatiquement)
+    const example = `https://archive.org/download/noel-skyline/01-Le%20Souffle%20du%20Sapin.mp3https://archive.org/download/noel-skyline/02-Le%20Bal%20des%20Flocons.mp3https://archive.org/download/noel-skyline/03-The%20Candle%E2%80%99s%20Prayer.mp3https://archive.org/download/noel-skyline/04-No%C3%ABl%20en%20famille.mp3https://archive.org/download/noel-skyline/05-Cocoa%20%26%20Lights.mp3https://archive.org/download/noel-skyline/06-Un%20Cadeau%20pour%20Demain.mp3https://archive.org/download/noel-skyline/07-%C4%90%C3%AEm%20Gi%C3%A1ng%20Sinh%20Qu%C3%AA%20Nh%C3%A0.mp3https://archive.org/download/noel-skyline/08-Northern%20Fires.mp3https://archive.org/download/noel-skyline/09-Le%20Renne%20Perdu.mp3https://archive.org/download/noel-skyline/10-Snowman%20in%20the%20Yard.mp3https://archive.org/download/noel-skyline/11-La%20Magie%20de%20No%C3%ABl.mp3https://archive.org/download/noel-skyline/12-Snowglobe%20Universe.mp3https://archive.org/download/noel-skyline/13-La%20Nuit%20des%20%C3%89toiles%20Blanches.mp3https://archive.org/download/noel-skyline/14-Paper%20Lantern%20December.mp3https://archive.org/download/noel-skyline/15-Sous%20le%20Manteau%20Blanc.mp3https://archive.org/download/noel-skyline/16-Starlit%20Snowfall.mp3`;
+    urlsInput.value = example;
+
+    // Progressive enhancement: register service worker
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',()=>{
+        navigator.serviceWorker.register('/service-worker.js').then(()=>console.log('SW registered')).catch(e=>console.warn('SW failed',e));
+      })
+    }
+
+  </script>
+</body>
+</html>
+
+
+
+<!-- ========== manifest.json (COPIER DANS manifest.json) ========== -->
+{
+  "name": "PWA Albums - Archive.org Player",
+  "short_name": "PWA Albums",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#071123",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+
+
+<!-- ========== service-worker.js (COPIER DANS service-worker.js) ========== -->
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open('pwa-albums-v1').then((cache) => {
+      return cache.addAll([
+        '/',
+        '/index.html',
+        '/manifest.json'
+      ]);
+    })
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  // stratégie : network-first pour fichiers audio (pour toujours jouer en direct depuis archive.org), cache-first pour tout le reste
+  const url = new URL(event.request.url);
+  if(url.pathname.endsWith('.mp3') || url.pathname.endsWith('.m4a') || url.pathname.endsWith('.flac') || url.pathname.endsWith('.ogg')){
+    // fallback: return network response (do not cache big audio by default)
+    event.respondWith(fetch(event.request).catch(()=>caches.match(event.request)));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then(resp=>resp || fetch(event.request)));
+});
+
+
+<!-- ========== README / Remarques déploiement ========== -->
+
+Remarques importantes :
+- Pour que le service worker s'enregistre correctement, les fichiers doivent être servis depuis le même origine (même domaine) et en HTTPS.
+- Blogger (blogspot) impose des restrictions : tu ne peux pas déposer librement des fichiers JS ou service worker dans la racine du site si tu utilises le thème Blogger. Sur blogspot, le SW pourrait ne pas s'enregistrer. Solution : héberger la PWA sur GitHub Pages, Netlify, Vercel ou un petit VPS, puis ajouter un lien depuis ton blog.
+- Si tu veux absolument rester sur Blogger, tu peux utiliser la version 'sans SW' (supprime l'enregistrement du SW dans le script) : l'interface et le player fonctionneront, mais l'installation PWA et le caching ne seront pas disponibles.
+
+Personnalisation :
+- Tu peux modifier le style CSS dans index.html.
+- Le code détecte automatiquement les images dans le même dossier (fichiers jpg/png) et utilise la première trouvée comme cover si elle existe. Sinon, charge une vignette par défaut.
+
+Si tu veux, je peux :
+- te fournir la version séparée prête à copier (je l'ai mise dans ce document : index.html + manifest.json + service-worker.js),
+- adapter l'UI au style de ton blog (couleurs, logo),
+- générer un ZIP prêt à déployer.
+
+
+<!-- FIN DU DOCUMENT -->
