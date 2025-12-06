@@ -1,131 +1,85 @@
-// ---- Debug / Hotfix script à coller dans la Console ----
-(function(){
-  console.log('[PWA DEBUG] script démarré');
+<!-- ========== index.html ========== -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PWA Albums - Archive.org Player</title>
+<meta name="description" content="Progressive Web App pour lire vos albums hébergés sur Archive.org" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0f172a" />
+<style>
+/* style minimal, moderne */
+:root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--accent:#7dd3fc}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071123 0%, #071426 100%);color:#e6eef6;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:16px;padding:18px 20px}
+h1{margin:0;font-size:1.1rem}
+.container{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:20px;align-items:start}
+@media(max-width:900px){.container{grid-template-columns:1fr;}
+header{justify-content:center}
+}
+.sidebar{background:rgba(255,255,255,0.03);padding:16px;border-radius:12px}
+.input-group{display:flex;flex-direction:column;gap:8px}
+textarea{width:100%;min-height:120px;padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;font-family:monospace}
+button{background:linear-gradient(90deg,var(--accent),#60a5fa);border:none;padding:10px 12px;border-radius:10px;color:#04233a;font-weight:600;cursor:pointer}
+.albums-list{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto}
+.album{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;cursor:pointer}
+.album:hover{background:rgba(255,255,255,0.02)}
+.cover{width:64px;height:64px;border-radius:6px;background:linear-gradient(180deg,#1f2937,#0b1220);object-fit:cover}
+.meta{display:flex;flex-direction:column}
+.meta .title{font-weight:700}
+.meta .sub{color:var(--muted);font-size:0.9rem}
 
-  // helper : extraction d'URLs archive.org robustifiée
-  function extractUrls(text){
-    if(!text) return [];
-    const re = /https:\/\/archive\.org\/download\/([^\s"'<>]+?)\/([^\s"'<>]+?\.(mp3|flac|ogg|m4a|jpg|jpeg|png))/ig;
-    const out = [];
-    let m;
-    while((m = re.exec(text)) !== null){
-      out.push('https://archive.org/download/' + m[1] + '/' + m[2]);
-    }
-    // fallback pour tout collé
-    if(out.length===0){
-      const parts = text.split(/https:\/\//).map(s=>s.trim()).filter(Boolean);
-      for(const p of parts){
-        if(p.startsWith('archive.org/download/')){
-          const match = p.match(/archive\.org\/download\/([^\s"'<>]+?)\/([\s\S]*?\.(mp3|flac|ogg|m4a|jpg|jpeg|png))/i);
-          if(match) out.push('https://' + match[0]);
-        }
-      }
-    }
-    return Array.from(new Set(out));
-  }
 
-  function groupByAlbum(urls){
-    const map={};
-    urls.forEach(u=>{
-      try{
-        const url = new URL(u);
-        const parts = url.pathname.split('/').filter(Boolean);
-        const idx = parts.indexOf('download');
-        const albumKey = parts[idx+1] || 'root';
-        if(!map[albumKey]) map[albumKey] = {id:albumKey, cover:null, tracks:[]};
-        const filename = parts.slice(idx+2).join('/');
-        const ext = filename.split('.').pop().toLowerCase();
-        if(['jpg','jpeg','png'].includes(ext)){
-          if(!map[albumKey].cover) map[albumKey].cover = u;
-        } else {
-          map[albumKey].tracks.push({title: decodeURIComponent(filename.replace(/^\d+[-_ ]*/,'' ).replace(/\.[^.]+$/,'')), url:u});
-        }
-      }catch(e){ console.warn('skip url',u,e); }
-    });
-    Object.keys(map).forEach(k=> map[k].tracks.sort((a,b)=> a.url.split('/').pop().localeCompare(b.url.split('/').pop(), undefined, {numeric:true})));
-    return Object.values(map);
-  }
+/* player */
+.player{background:rgba(255,255,255,0.03);padding:18px;border-radius:12px;min-height:320px}
+.player-top{display:flex;gap:16px;align-items:center}
+.player-controls{display:flex;gap:12px;align-items:center;margin-top:12px}
+.play-btn{width:56px;height:56px;border-radius:14px;border:none;font-size:18px;display:grid;place-items:center;background:var(--accent);color:#04233a}
+.progress{width:100%;height:8px;background:rgba(255,255,255,0.05);border-radius:10px;margin-top:12px;position:relative}
+.progress > i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#7dd3fc);border-radius:10px}
+.playlist{margin-top:16px;max-height:38vh;overflow:auto}
+.track{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px}
+.track:hover{background:rgba(255,255,255,0.02)}
+.muted{color:var(--muted)}
 
-  // function to fetch metadata from archive.org
-  async function fetchArchiveMetadata(id){
-    const url = 'https://archive.org/metadata/' + encodeURIComponent(id);
-    console.log('[PWA DEBUG] fetch', url);
-    const r = await fetch(url);
-    if(!r.ok) throw new Error('Metadata fetch failed: ' + r.status);
-    return r.json();
-  }
 
-  // Attach handler to parseBtn if present
-  const parseBtn = document.getElementById('parseBtn');
-  const urlsInput = document.getElementById('urlsInput');
-  if(parseBtn && urlsInput){
-    parseBtn.onclick = () => {
-      try{
-        const raw = urlsInput.value || '';
-        console.log('[PWA DEBUG] raw length', raw.length);
-        const urls = extractUrls(raw);
-        console.log('[PWA DEBUG] extracted urls', urls);
-        if(urls.length===0) return alert('Aucune URL détectée (vérifie le texte collé). Voir console pour détails.');
-        const grouped = groupByAlbum(urls);
-        console.log('[PWA DEBUG] grouped albums', grouped);
-        // try to call page's renderAlbums if exists
-        if(typeof renderAlbums === 'function' && typeof albums !== 'undefined'){
-          // merge: prepend new groups
-          grouped.forEach(g=>{
-            if(!albums.find(a=>a.id===g.id)) albums.unshift(g);
-            else Object.assign(albums.find(a=>a.id===g.id), g);
-          });
-          try{ renderAlbums(); if(typeof loadAlbum==='function') loadAlbum(albums[0]); }catch(e){ console.warn('render/load error', e); alert('Album importé mais renderAlbums() indisponible (voir console)'); }
-        } else {
-          console.warn('renderAlbums or albums not found in page scope; grouped printed above.');
-          alert('URLs extraites — regarde la console pour la suite (la page semble manquer des fonctions d\'affichage).');
-        }
-      }catch(err){ console.error(err); alert('Erreur parse: '+err.message); }
-    };
-    console.log('[PWA DEBUG] handler attaché au bouton parseBtn');
-  } else {
-    console.warn('[PWA DEBUG] parseBtn or urlsInput not found on page');
-  }
+footer{padding:12px;text-align:center;color:var(--muted);font-size:0.9rem}
 
-  // Add a temporary "Tester Charger" button in header to test archive.org metadata
-  const header = document.querySelector('header') || document.body;
-  const testBtn = document.createElement('button');
-  testBtn.textContent = 'Tester Charger';
-  testBtn.style.marginLeft = '12px';
-  testBtn.style.padding = '6px 10px';
-  testBtn.onclick = async ()=>{
-    const id = prompt('Identifiant Archive.org (ex: noel-skyline) :');
-    if(!id) return;
-    try{
-      testBtn.disabled = true; testBtn.textContent='Chargement...';
-      const meta = await fetchArchiveMetadata(id);
-      console.log('[PWA DEBUG] metadata', meta);
-      const files = meta.files || [];
-      const audioFiles = files.filter(f=>/(mp3|flac|ogg|m4a)$/i.test(f.name)).map(f=>f.name);
-      alert('Metadata OK: ' + audioFiles.length + ' fichiers audio trouvés. Regarde la console pour la liste.');
-      console.log('[PWA DEBUG] audio files', audioFiles);
-    }catch(e){
-      console.error(e);
-      alert('Erreur fetch metadata: ' + e.message + '. Voir console.');
-    } finally {
-      testBtn.disabled = false; testBtn.textContent='Tester Charger';
-    }
-  };
-  header.appendChild(testBtn);
 
-  // Helpful quick tests to run manually in console:
-  console.log('[PWA DEBUG] Pour tester manuellement: extractUrls(texte_collé); groupByAlbum(array_of_urls);');
-  console.log('[PWA DEBUG] Si le problème est "boutons inactifs", regarde s\'il y a des erreurs JS antérieures dans la console (rouge).');
+</style>
+</head>
+<body>
+<header>
+<img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><rect rx='10' width='44' height='44' fill='%23071a2b'/><text x='50%' y='55%' font-size='16' text-anchor='middle' fill='%237dd3fc' font-family='Arial'>PWA</text></svg>" alt="logo" style="width:44px;height:44px;border-radius:10px;"/>
+<div>
+<h1>PWA Albums — Archive.org Player</h1>
+<div style="color:var(--muted);font-size:0.95rem">Colle tes URLs (ou JSON) puis clique <strong>Parser et Charger Album</strong>.</div>
+</div>
+</header>
 
-  // Unregister service worker helper (au cas où SW renvoie une vieille version)
-  window.__unregisterSW = async function(){
-    if('serviceWorker' in navigator){
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for(const r of regs){ try{ await r.unregister(); console.log('SW unregistered', r); }catch(e){console.warn(e);} }
-      alert('Service workers attempted to unregister — recharge la page (Ctrl+F5).');
-    } else alert('Service Worker API non dispo.');
-  };
 
-  console.log('[PWA DEBUG] script prêt — regarde la console et teste le bouton "Tester Charger" ajouté en haut.');
-})();
+<main class="container">
+<aside class="sidebar">
+<div class="input-group">
+<label class="muted">Coller les URLs (même sans séparateurs) :</label>
+<textarea id="urlsInput" placeholder="Colle ici les URLs, ex : https://archive.org/download/noel-skyline/01-...mp3https://archive.org/download/noel-skyline/02-...mp3"></textarea>
+<div style="display:flex;gap:8px">
+<button id="parseBtn">Parser et Charger Album</button>
+<button id="clearBtn" style="background:transparent;color:var(--accent);border:1px solid rgba(125,211,252,0.25)">Effacer</button>
+</div>
+</div>
 
+
+<div style="margin-top:12px">
+<label class="muted">Albums détectés :</label>
+<div id="albumsList" class="albums-list"></div>
+</div>
+
+
+<div style="margin-top:16px">
+<label class="muted">Importer JSON :</label>
+<input id="fileInput" type="file" accept="application/json" />
+</div>
+</aside>
