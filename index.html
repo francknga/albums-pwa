@@ -1,1 +1,164 @@
-<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Albums PWA</title></head><body><h1>PWA Albums</h1></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PWA Albums — Archive.org Player</title>
+  <meta name="description" content="PWA pour lire albums hébergés sur Archive.org — tape l'identifiant, charge & joue." />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#ffffff" />
+  <style>
+    /* Apple Music-like light theme */
+    :root{
+      --bg:#ffffff; --panel:#f6f7fb; --muted:#65707a; --accent:#0070f3;
+      --card-shadow: 0 6px 24px rgba(20,30,40,0.06);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Roboto,Helvetica,Arial;color:#0b1220;background:linear-gradient(180deg,#ffffff,#f7f9fc);min-height:100vh}
+    header{display:flex;align-items:center;gap:14px;padding:18px 22px}
+    h1{margin:0;font-size:1.05rem}
+    .wrap{max-width:1100px;margin:18px auto;padding:0 16px}
+
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:22px}
+    @media(max-width:920px){.grid{grid-template-columns:1fr}}
+
+    .panel{background:var(--panel);border-radius:14px;padding:16px;box-shadow:var(--card-shadow)}
+    .input-row{display:flex;gap:10px;align-items:center}
+    input[type=text]{flex:1;padding:10px 12px;border-radius:10px;border:1px solid #e6e9ef;background:white}
+    button{background:var(--accent);color:white;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    .muted{color:var(--muted)}
+
+    .albums-list{margin-top:12px;display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto}
+    .album{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;cursor:pointer}
+    .album:hover{background:rgba(0,112,243,0.04)}
+    .cover{width:72px;height:72px;border-radius:10px;object-fit:cover;background:#f0f3f6}
+
+    /* Player */
+    .player{display:flex;flex-direction:column;gap:14px}
+    .player-top{display:flex;gap:18px;align-items:center}
+    .player-cover{width:160px;height:160px;border-radius:12px;object-fit:cover;background:#fff;border:1px solid #eef2f6}
+    .player-meta{display:flex;flex-direction:column;gap:6px}
+    .player-title{font-size:1.2rem;font-weight:700}
+    .player-sub{color:var(--muted)}
+
+    .controls{display:flex;align-items:center;gap:12px}
+    .big-play{width:64px;height:64px;border-radius:14px;border:none;background:var(--accent);color:white;font-size:18px;display:grid;place-items:center}
+
+    .progress{height:8px;background:#e6ecf8;border-radius:999px;position:relative;overflow:hidden}
+    .progress > i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#66a6ff,#0070f3)}
+
+    .playlist{margin-top:8px;max-height:48vh;overflow:auto}
+    .track{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px}
+    .track:hover{background:rgba(15,23,42,0.02)}
+
+    footer{text-align:center;color:var(--muted);padding:18px;font-size:0.95rem}
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><rect rx='8' width='44' height='44' fill='%23ffffff' stroke='%230070f3' stroke-width='2'/><text x='50%' y='58%' font-size='15' text-anchor='middle' fill='%230070f3' font-family='Arial'>A</text></svg>" alt="logo" style="width:44px;height:44px;border-radius:8px;"/>
+    <div>
+      <h1>PWA Albums — Archive.org Player</h1>
+      <div class="muted">Saisis un identifiant Archive.org (ex: <code>noel-skyline</code>) puis clique « Charger l'album »</div>
+    </div>
+  </header>
+
+  <main class="wrap grid">
+    <aside class="panel">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="input-row">
+          <input id="identifier" type="text" placeholder="Entrez l'identifiant Archive.org (ex: noel-skyline)" />
+          <button id="loadBtn">Charger l'album</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label class="muted">Ou colle des URLs brutes :</label>
+        </div>
+        <textarea id="rawUrls" placeholder="(optionnel) coller des URLs directes si tu préfères" style="width:100%;min-height:80px;padding:10px;border-radius:8px;border:1px solid #eef2f6;background:white;font-family:monospace"></textarea>
+
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="parseUrlsBtn" style="background:#222;color:white">Parser URLs</button>
+          <button id="clearBtn" style="background:transparent;border:1px solid #e6eefc;color:var(--muted)">Effacer</button>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="muted">Albums chargés :</div>
+          <div id="albumsList" class="albums-list"></div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="panel player">
+      <div class="player-top">
+        <img id="playerCover" class="player-cover" src="" alt="cover" />
+        <div style="flex:1">
+          <div class="player-meta">
+            <div id="playerTitle" class="player-title">Aucun album</div>
+            <div id="playerSub" class="player-sub">—</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="controls">
+              <button id="prevBtn">⏮</button>
+              <button id="playBtn" class="big-play">▶</button>
+              <button id="nextBtn">⏭</button>
+
+              <div style="margin-left:20px;color:var(--muted)"><span id="currentTime">0:00</span> / <span id="duration">0:00</span></div>
+
+              <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+                <label class="muted">Volume</label>
+                <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" />
+              </div>
+            </div>
+
+            <div class="progress" id="progressBar"><i></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:6px" class="muted">Pistes :</div>
+      <div id="playlist" class="playlist"></div>
+    </section>
+  </main>
+
+  <footer class="wrap">PWA Albums — Lecteur Archive.org • Développé pour toi</footer>
+
+  <script>
+    // ----------------- Helpers -----------------
+    function fmtTime(s){ if(!s || isNaN(s)) return '0:00'; const m=Math.floor(s/60); const sec=Math.floor(s%60).toString().padStart(2,'0'); return m+':'+sec }
+
+    // extract URLs if user pasted raw list
+    function extractUrls(text){
+      const re = /https:\/\/archive\.org\/download\/[\w%\-\.]+\/(?:[^\s"'<>]+?\.(?:mp3|flac|ogg|m4a|jpg|jpeg|png))/ig;
+      let m, arr=[];
+      while((m=re.exec(text))!==null){ arr.push(decodeURIComponent(m[0])); }
+      if(arr.length===0){
+        const parts = text.split(/https:\/\//).map(s=>s.trim()).filter(Boolean);
+        for(const p of parts){ if(p.startsWith('archive.org/download/')){ const match = p.match(/archive\.org\/download\/[\w%\-\.]+\/[\s\S]*?\.(mp3|flac|ogg|m4a|jpg|jpeg|png)/i); if(match) arr.push('https://' + match[0]); }}
+      }
+      return Array.from(new Set(arr));
+    }
+
+    // ----------------- Archive.org metadata fetch -----------------
+    async function fetchArchiveMetadata(identifier){
+      const url = `https://archive.org/metadata/${encodeURIComponent(identifier)}`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('Impossible de récupérer metadata: '+res.status);
+      return res.json();
+    }
+
+    // ----------------- App state -----------------
+    const albums = []; // {id, title, cover, tracks: [{title,url}]}
+    let currentAlbum = null; let currentIndex=0;
+    const audio = new Audio(); audio.crossOrigin='anonymous';
+
+    // DOM
+    const identifierEl = document.getElementById('identifier');
+    const loadBtn = document.getElementById('loadBtn');
+    const rawUrls = document.getElementById('rawUrls');
+    const parseUrlsBtn = document.getElementById('parseUrlsBtn');
+    const albumsListEl = document.getElementById('albumsList');
+    const playerCover = document.getElementById('playerCover');
+    const playerTitle = document.getElementById('playerTitle');
+    const playerSub = document.getElementById('playerSub');
+    const playlistEl = document.getElementById('playlist');
+    const playBtn = do
